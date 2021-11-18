@@ -4,7 +4,8 @@ commands:
   destroy-environment:
     description: Destroy back-end and front-end cloudformation stacks given a workflow ID.
     parameters:
-      # Add parameter here   
+      # Add parameter here 
+        
     steps:
       - run:
           name: Destroy environments
@@ -16,7 +17,8 @@ commands:
   revert-migrations:
     description: Revert the last migration if successfully run in the current workflow.
     parameters:
-      # Add parameter here     
+      # Add parameter here 
+
     steps:
       - run:
           name: Revert migrations
@@ -44,6 +46,9 @@ jobs:
           name: Build front-end
           command: |
             # Your code here
+            cd frontend
+            npm install
+            npm run build
             exit 1
       - save_cache:
           paths: [frontend/node_modules]
@@ -60,6 +65,9 @@ jobs:
           name: Back-end build
           command: |
              # Your code here
+             cd backend
+             npm install
+             npm run build
              exit 1
       - save_cache:
           paths: [backend/node_modules]
@@ -68,91 +76,132 @@ jobs:
   test-frontend:
     docker:
       # Docker image here
+      - image: circleci/node:13.8.0
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
+      - checkout# Checkout code from git
+      - restore_cache:
+          keys: [frontend-build]# Restore from cache
+      - run:# Your job code here
+          name: test frontend
+          command: |
+            cd frontend
+            npm install
+            npm run test
+
                 
   test-backend:
     docker:
       # Docker image here
+      - image: circleci/node:13.8.0
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
+      - checkout# Checkout code from git
+      - restore_cache:# Restore from cache
+      - run:
+        name: test backend# Your job code here
+        command: |
+        cd backend
+        npm install
+        npm run test
             
   scan-frontend:
     docker:
       # Docker image here
+      - image: circleci/node:13.8.0
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
+      - checkout# Checkout code from git
+      - restore_cache:# Restore from cache 
+        keys: [frontend-build]
+      - run:    # Your job code here
+          name: scan frontend
+          command: |
+            cd frontend
+            npm install
+            npm audit --audit-level=critical || true
 
   scan-backend:
     docker:
       # Docker image here
+      - image: circleci/node:13.8.0
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
+      - checkout# Checkout code from git
+      - restore_cache:# Restore from cache
+          keys: [backend]
+      - run:
+        name: scan backend# Your job code here
+        command: |
+          cd backend
+          npm install
+          npm audit --audit-level=critical || true
 
   deploy-infrastructure:
     docker:
       # Docker image here that supports AWS CLI
+      - image: amazon/aws-cli
+      branches:
+        only:
+          -main
+          - /rc-./
     steps:
-      # Checkout code from git
-      - run:
+      - checkout# Checkout code from git
+      - run: yum -y install tar gzip
+      - run
           name: Ensure back-end infrastructure exists
           command: |
             aws cloudformation deploy \
               --template-file .circleci/files/backend.yml \
-              #--tags project=your-tag \
-              # --stack-name "your back-end stack name with workflow id" \
-              # --parameter-overrides ID="your workflow id"  
+              --tags project=UdaPeople_backend \#--tags project=your-tag \
+              --stack-name stack-create-bucket-${CIRCLE_WORKFLOW_ID:0:7}# --stack-name "your back-end stack name with workflow id" \
+              --parameter-overrides MyBucketName="mybucket-${CIRCLE_WORKFLOW_ID:0:7}"# --parameter-overrides ID="your workflow id"  
               exit 1
       - run:
           name: Ensure front-end infrastructure exist
           command: |
             aws cloudformation deploy \
               --template-file .circleci/files/frontend.yml \
-              #--tags project=your-tag \
-              # --stack-name "your front-end stack name with workflow id" \
-              # --parameter-overrides ID="your workflow id"  
+              --tags project=UdaPeople_frontend#--tags project=your-tag \
+              --stack-name stack-create-bucket-${CIRCLE_WORKFLOW_ID:0:7}# --stack-name "your front-end stack name with workflow id" \
+              --parameter-overrides MyBucketName="mybucket-${CIRCLE_WORKFLOW_ID:0:7}"# --parameter-overrides ID="your workflow id"  
               exit 1
       - run:
           name: Add back-end ip to ansible inventory
           command: |
-            # Your code here
+            aws ec2 describe-instances \# Your code here
+            --filter "Name=tag:Name, Value=backend -${CIRCLE WORKFLOW ID:0:7}" \
+            --query 'Reservations[*].PublicIpAddress' \
+            --output text >> .circle/ansible/inventory.txt
             exit 1
       - persist_to_workspace:
           root: ~/
           paths:
             - project/.circleci/ansible/inventory.txt
-      # Here's where you will add some code to rollback on failure      
-
+      - destroy-env"# Here's where you will add some code to rollback on failure      
+          workflow_id: "{CIRCLE_WORKFLOW_ID:0:7}"
+          event: on_fail
   configure-infrastructure:
     docker:
       # Docker image here that supports Ansible
+      - image: python:3.7-alpine3.11
     steps:
-      # Checkout code from git
-      # Add ssh keys with fingerprint
-      # attach workspace
+      - checkout# Checkout code from git
+      - add_ssh_keys:
+          fingerprints:
+        attach_workspace:
+          at: ~/
       - run:
           name: Install dependencies
           command: |
-            # Your code here
+            apk add --update ansible# Your code here
             exit 1
       - run:
           name: Configure server
           command: |
-            # Your code here
+            ansible-playbook -i inventory.txt main4.yml#rename  # Your code here
             exit 1
       # Here's where you will add some code to rollback on failure      
 
   run-migrations:
     docker:
-      # Docker image here that supports NodeJS
+      - image: # Docker image here that supports NodeJS
     steps:
       # Checkout code from git
       - run:
